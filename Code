@@ -1,0 +1,1301 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+import pandas as pd
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+import datetime
+import calendar
+import pickle
+from datetime import timedelta
+import os
+import sys
+
+class HorarioLaboral:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Generador de Horarios Laborales by Viaja Tech")
+        self.root.geometry("1280x800")
+
+        # Variables
+        self.trabajadores = []
+        self.horarios = {}
+        self.dias_descanso = {}
+        self.horas_semanales = {}
+        
+        # Obtener año actual para el rango de años
+        self.anio_actual = datetime.datetime.now().year
+        
+        # Creación de la GUI
+        self.crear_gui()
+    
+    def crear_gui(self):
+        # Menú
+        menu_bar = tk.Menu(self.root)
+        self.root.config(menu=menu_bar)
+        
+        # Menú de archivo
+        file_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="Archivo", menu=file_menu)
+        file_menu.add_command(label="Guardar Configuración", command=self.guardar_configuracion)
+        file_menu.add_command(label="Cargar Configuración", command=self.cargar_configuracion)
+        file_menu.add_separator()
+        file_menu.add_command(label="Salir", command=self.root.quit)
+        
+        # Crear tabs
+        self.tab_control = ttk.Notebook(self.root)
+        self.tab_trabajadores = ttk.Frame(self.tab_control)
+        self.tab_horarios = ttk.Frame(self.tab_control)
+        self.tab_resumen = ttk.Frame(self.tab_control)
+        
+        self.tab_control.add(self.tab_trabajadores, text='Trabajadores')
+        self.tab_control.add(self.tab_horarios, text='Horarios')
+        self.tab_control.add(self.tab_resumen, text='Resumen')
+        
+        self.tab_control.pack(expand=1, fill="both")
+
+        # Tab Trabajadores
+        self.crear_tab_trabajadores()
+        
+        # Tab Horarios
+        self.crear_tab_horarios()
+        
+        # Tab Resumen
+        self.crear_tab_resumen()
+    
+    def crear_tab_trabajadores(self):
+        # Frame para agregar trabajadores
+        frame_agregar = ttk.LabelFrame(self.tab_trabajadores, text="Agregar Trabajador")
+        frame_agregar.pack(fill="both", expand="yes", padx=20, pady=10)
+
+        # Nombre del trabajador
+        ttk.Label(frame_agregar, text="Nombre:").grid(column=0, row=0, padx=10, pady=10)
+        self.nombre_var = tk.StringVar()
+        ttk.Entry(frame_agregar, textvariable=self.nombre_var, width=30).grid(column=1, row=0, padx=10, pady=10)
+
+        # Preferencia de horario
+        ttk.Label(frame_agregar, text="Preferencia de horario:").grid(column=0, row=1, padx=10, pady=10)
+        self.preferencia_var = tk.StringVar(value="Jornada Completa")
+        preferencias = ttk.Combobox(frame_agregar, textvariable=self.preferencia_var, width=30)
+        preferencias['values'] = ["Jornada Completa", "Medio Tiempo", "Turno Mañana", "Turno Tarde", "Turno Noche", "Flexible"]
+        preferencias.grid(column=1, row=1, padx=10, pady=10)
+        
+        # Horas semanales
+        ttk.Label(frame_agregar, text="Horas semanales:").grid(column=0, row=2, padx=10, pady=10)
+        self.horas_semanales_var = tk.StringVar(value="40")
+        ttk.Entry(frame_agregar, textvariable=self.horas_semanales_var, width=30).grid(column=1, row=2, padx=10, pady=10)
+        
+        # Preferencia de días de descanso
+        ttk.Label(frame_agregar, text="Preferencia de día(s) de descanso:").grid(column=0, row=3, padx=10, pady=10)
+        
+        dias_frame = ttk.Frame(frame_agregar)
+        dias_frame.grid(column=1, row=3, padx=10, pady=10)
+        
+        self.dias_descanso_vars = {}
+        dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+        
+        for i, dia in enumerate(dias):
+            var = tk.BooleanVar(value=False)
+            if dia == "Domingo":  # Por defecto, domingo como día de descanso
+                var.set(True)
+            self.dias_descanso_vars[dia] = var
+            chk = ttk.Checkbutton(dias_frame, text=dia, variable=var)
+            chk.grid(row=0, column=i, padx=5)
+
+        # Botón para agregar trabajador
+        ttk.Button(frame_agregar, text="Agregar Trabajador", command=self.agregar_trabajador).grid(column=0, row=4, columnspan=2, padx=10, pady=10)
+
+        # Frame para mostrar trabajadores
+        frame_mostrar = ttk.LabelFrame(self.tab_trabajadores, text="Trabajadores Registrados")
+        frame_mostrar.pack(fill="both", expand="yes", padx=20, pady=10)
+
+        # Treeview para mostrar trabajadores
+        self.tree_trabajadores = ttk.Treeview(frame_mostrar, columns=('Nombre', 'Preferencia', 'Horas', 'Días de Descanso'), show='headings')
+        self.tree_trabajadores.heading('Nombre', text='Nombre')
+        self.tree_trabajadores.heading('Preferencia', text='Preferencia de Horario')
+        self.tree_trabajadores.heading('Horas', text='Horas Semanales')
+        self.tree_trabajadores.heading('Días de Descanso', text='Días de Descanso')
+        
+        self.tree_trabajadores.column('Nombre', width=150)
+        self.tree_trabajadores.column('Preferencia', width=150)
+        self.tree_trabajadores.column('Horas', width=100)
+        self.tree_trabajadores.column('Días de Descanso', width=300)
+        
+        self.tree_trabajadores.pack(fill="both", expand="yes", padx=10, pady=10)
+        
+        # Botones para editar y eliminar trabajador
+        btn_frame = ttk.Frame(frame_mostrar)
+        btn_frame.pack(fill="x", padx=10, pady=10)
+        
+        ttk.Button(btn_frame, text="Editar Trabajador", command=self.editar_trabajador).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Eliminar Trabajador", command=self.eliminar_trabajador).pack(side=tk.LEFT, padx=5)
+    
+    def crear_tab_horarios(self):
+        # Frame superior para seleccionar fecha
+        frame_fecha = ttk.LabelFrame(self.tab_horarios, text="Seleccionar Período")
+        frame_fecha.pack(fill="x", padx=20, pady=10)
+
+        # Seleccionar año
+        ttk.Label(frame_fecha, text="Año:").grid(column=0, row=0, padx=10, pady=10)
+        self.anio_var = tk.StringVar(value=str(self.anio_actual))
+        self.anio_combo = ttk.Combobox(frame_fecha, textvariable=self.anio_var, width=8)
+        self.anio_combo['values'] = list(range(self.anio_actual, self.anio_actual + 26))  # 25 años desde el actual
+        self.anio_combo.grid(column=1, row=0, padx=10, pady=10)
+
+        # Seleccionar mes
+        ttk.Label(frame_fecha, text="Mes:").grid(column=2, row=0, padx=10, pady=10)
+        self.mes_var = tk.StringVar()
+        self.mes_combo = ttk.Combobox(frame_fecha, textvariable=self.mes_var, width=15)
+        self.mes_combo['values'] = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
+                                  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        self.mes_combo.current(datetime.datetime.now().month - 1)  # Mes actual
+        self.mes_combo.grid(column=3, row=0, padx=10, pady=10)
+        
+        # Seleccionar semana (rango de fechas)
+        ttk.Label(frame_fecha, text="Semana:").grid(column=4, row=0, padx=10, pady=10)
+        self.semana_var = tk.StringVar()
+        self.semana_combo = ttk.Combobox(frame_fecha, textvariable=self.semana_var, width=20)
+        self.semana_combo.grid(column=5, row=0, padx=10, pady=10)
+        
+        # Actualizar semanas cuando se cambia el mes o año
+        self.anio_combo.bind("<<ComboboxSelected>>", self.actualizar_semanas)
+        self.mes_combo.bind("<<ComboboxSelected>>", self.actualizar_semanas)
+        
+        # Inicializar la lista de semanas
+        self.actualizar_semanas()
+        
+        # Botones para generar y administrar horarios
+        btn_frame = ttk.Frame(frame_fecha)
+        btn_frame.grid(column=0, row=1, columnspan=6, padx=10, pady=10)
+        
+        ttk.Button(btn_frame, text="Generar Horario", command=self.generar_horario).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Asignar Horarios Automáticos", command=self.asignar_horarios_automaticos).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Limpiar Horario", command=self.limpiar_horario).pack(side=tk.LEFT, padx=5)
+
+        # Frame para mostrar y editar horarios
+        frame_horario = ttk.LabelFrame(self.tab_horarios, text="Horario Semanal")
+        frame_horario.pack(fill="both", expand="yes", padx=20, pady=10)
+
+        # Crear scroll para la tabla de horarios
+        scroll_x = ttk.Scrollbar(frame_horario, orient="horizontal")
+        scroll_y = ttk.Scrollbar(frame_horario, orient="vertical")
+        
+        # Treeview para mostrar horarios con scroll
+        self.tree_horario = ttk.Treeview(frame_horario, xscrollcommand=scroll_x.set, yscrollcommand=scroll_y.set)
+        scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+        scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        scroll_x.config(command=self.tree_horario.xview)
+        scroll_y.config(command=self.tree_horario.yview)
+        
+        self.tree_horario.pack(fill="both", expand="yes", padx=10, pady=10)
+        
+        # Agregar doble clic para editar horario
+        self.tree_horario.bind("<Double-1>", self.editar_horario)
+
+        # Frame para exportar horarios
+        frame_exportar = ttk.LabelFrame(self.tab_horarios, text="Exportar Horario")
+        frame_exportar.pack(fill="x", padx=20, pady=10)
+
+        # Botones para exportar a PDF y Excel
+        ttk.Button(frame_exportar, text="Exportar a PDF", command=self.exportar_pdf).pack(side=tk.LEFT, padx=10, pady=10)
+        ttk.Button(frame_exportar, text="Exportar a Excel", command=self.exportar_excel).pack(side=tk.LEFT, padx=10, pady=10)
+    
+    def crear_tab_resumen(self):
+        # Frame para mostrar el resumen de horas trabajadas
+        frame_resumen = ttk.LabelFrame(self.tab_resumen, text="Resumen de Horas Trabajadas")
+        frame_resumen.pack(fill="both", expand="yes", padx=20, pady=10)
+        
+        # Treeview para mostrar el resumen
+        self.tree_resumen = ttk.Treeview(frame_resumen, 
+                                         columns=('Trabajador', 'Horas Programadas', 'Horas Extras', 'Total', 'Días Laborados'),
+                                         show='headings')
+        
+        self.tree_resumen.heading('Trabajador', text='Trabajador')
+        self.tree_resumen.heading('Horas Programadas', text='Horas Programadas')
+        self.tree_resumen.heading('Horas Extras', text='Horas Extras')
+        self.tree_resumen.heading('Total', text='Total Horas')
+        self.tree_resumen.heading('Días Laborados', text='Días Laborados')
+        
+        self.tree_resumen.column('Trabajador', width=150)
+        self.tree_resumen.column('Horas Programadas', width=150)
+        self.tree_resumen.column('Horas Extras', width=100)
+        self.tree_resumen.column('Total', width=100)
+        self.tree_resumen.column('Días Laborados', width=100)
+        
+        self.tree_resumen.pack(fill="both", expand="yes", padx=10, pady=10)
+        
+        # Botón para calcular resumen
+        ttk.Button(self.tab_resumen, text="Calcular Resumen", command=self.calcular_resumen).pack(padx=10, pady=10)
+        
+        # Frame para información legal
+        frame_info = ttk.LabelFrame(self.tab_resumen, text="Información sobre la Ley Laboral en México")
+        frame_info.pack(fill="both", expand="yes", padx=20, pady=10)
+        
+        # Agregar scroll para la información legal
+        info_scroll = ttk.Scrollbar(frame_info)
+        info_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        info_text = tk.Text(frame_info, height=10, yscrollcommand=info_scroll.set)
+        info_scroll.config(command=info_text.yview)
+        
+        info_content = """
+        JORNADA LABORAL SEGÚN LA LEY FEDERAL DEL TRABAJO EN MÉXICO:
+        
+        • Jornada diurna: 8 horas (entre 6:00 y 20:00)
+        • Jornada nocturna: 7 horas (entre 20:00 y 6:00)
+        • Jornada mixta: 7.5 horas (períodos de jornada diurna y nocturna)
+        • Máximo de horas semanales: 48 horas (jornada diurna)
+        
+        HORAS EXTRA:
+        • Las primeras 9 horas extra semanales se pagan al doble.
+        • A partir de la hora 10, se pagan al triple.
+        • No deben exceder de 3 horas diarias ni de 3 veces por semana.
+        
+        DESCANSO SEMANAL:
+        • Al menos un día de descanso por cada 6 días trabajados, con goce de salario íntegro.
+        • Si se trabaja en día de descanso semanal, se pagará un salario doble.
+        
+        DÍAS FESTIVOS OFICIALES (CON GOCE DE SUELDO):
+        • 1 de enero: Año Nuevo
+        • Primer lunes de febrero: Día de la Constitución
+        • Tercer lunes de marzo: Natalicio de Benito Juárez
+        • 1 de mayo: Día del Trabajo
+        • 16 de septiembre: Día de la Independencia
+        • Tercer lunes de noviembre: Día de la Revolución Mexicana
+        • 25 de diciembre: Navidad
+        • Cada 6 años, el 1 de octubre: Transmisión del Poder Ejecutivo Federal
+        
+        PRIMA DOMINICAL:
+        • 25% adicional sobre el salario cuando se trabaja en domingo.
+        
+        VACACIONES:
+        • 6 días de vacaciones el primer año, aumentando 2 días por cada año adicional hasta llegar a 12.
+        • Después del 4° año, aumenta 2 días por cada 5 años de servicio.
+        • Prima vacacional del 25% sobre el salario de los días de vacaciones.
+        
+        ESTADO DE MÉXICO - CONSIDERACIONES ESPECIALES:
+        • Los horarios de trabajo pueden variar según el municipio y sus reglamentos.
+        • Algunos municipios tienen restricciones específicas para ciertos giros comerciales.
+        • Se recomienda verificar los reglamentos municipales para establecimientos específicos.
+        """
+        
+        info_text.insert(tk.END, info_content)
+        info_text.config(state=tk.DISABLED)  # Hacer el texto no editable
+        info_text.pack(fill="both", expand="yes", padx=10, pady=10)
+    
+    def actualizar_semanas(self, event=None):
+        try:
+            anio = int(self.anio_var.get())
+            mes_idx = self.mes_combo.current() + 1
+            
+            # Obtener el número de días en el mes
+            num_dias = calendar.monthrange(anio, mes_idx)[1]
+            
+            # Crear lista de semanas (de lunes a domingo)
+            semanas = []
+            
+            # Encontrar el primer lunes del mes
+            primer_dia = datetime.date(anio, mes_idx, 1)
+            dias_hasta_lunes = (7 - primer_dia.weekday()) % 7
+            
+            if dias_hasta_lunes > 0:
+                # Si el mes no comienza en lunes, crear semana parcial
+                inicio = primer_dia
+                fin = inicio + timedelta(days=dias_hasta_lunes - 1)
+                semanas.append(f"{inicio.day} - {fin.day}")
+            
+            # Crear semanas completas (lunes a domingo)
+            dia = primer_dia + timedelta(days=dias_hasta_lunes)
+            while dia.month == mes_idx:
+                inicio = dia
+                fin = min(inicio + timedelta(days=6), datetime.date(anio, mes_idx, num_dias))
+                semanas.append(f"{inicio.day} - {fin.day}")
+                dia = fin + timedelta(days=1)
+                
+                # Si llegamos al final del mes, salir
+                if dia.month != mes_idx:
+                    break
+            
+            # Actualizar el combobox de semanas
+            self.semana_combo['values'] = semanas
+            if semanas:
+                self.semana_combo.current(0)
+            
+        except Exception as e:
+            print(f"Error al actualizar semanas: {e}")
+    
+    def agregar_trabajador(self):
+        nombre = self.nombre_var.get().strip()
+        if not nombre:
+            messagebox.showerror("Error", "Por favor, ingrese un nombre")
+            return
+            
+        # Verificar si el trabajador ya existe
+        for item in self.tree_trabajadores.get_children():
+            if self.tree_trabajadores.item(item, 'values')[0] == nombre:
+                messagebox.showerror("Error", f"El trabajador '{nombre}' ya existe")
+                return
+        
+        # Obtener días de descanso seleccionados
+        dias_descanso = []
+        for dia, var in self.dias_descanso_vars.items():
+            if var.get():
+                dias_descanso.append(dia)
+        
+        if not dias_descanso:
+            messagebox.showerror("Error", "Debe seleccionar al menos un día de descanso")
+            return
+        
+        # Validar horas semanales
+        try:
+            horas_semanales = int(self.horas_semanales_var.get())
+            if horas_semanales <= 0 or horas_semanales > 48:
+                messagebox.showerror("Error", "Las horas semanales deben estar entre 1 y 48")
+                return
+        except ValueError:
+            messagebox.showerror("Error", "Las horas semanales deben ser un número entero")
+            return
+        
+        # Guardar preferencia y días de descanso
+        preferencia = self.preferencia_var.get()
+        
+        # Agregar a la lista de trabajadores y al Treeview
+        self.trabajadores.append(nombre)
+        self.dias_descanso[nombre] = dias_descanso
+        self.horas_semanales[nombre] = horas_semanales
+        
+        self.tree_trabajadores.insert('', 'end', values=(
+            nombre, 
+            preferencia, 
+            horas_semanales,
+            ", ".join(dias_descanso)
+        ))
+        
+        # Limpiar campos
+        self.nombre_var.set("")
+        self.preferencia_var.set("Jornada Completa")
+        self.horas_semanales_var.set("40")
+        
+        # Resetear checkboxes excepto domingo
+        for dia, var in self.dias_descanso_vars.items():
+            var.set(dia == "Domingo")
+    
+    def editar_trabajador(self):
+        # Verificar si hay un trabajador seleccionado
+        if not self.tree_trabajadores.selection():
+            messagebox.showerror("Error", "No hay trabajador seleccionado")
+            return
+        
+        # Obtener el item seleccionado
+        item = self.tree_trabajadores.selection()[0]
+        valores = self.tree_trabajadores.item(item, 'values')
+        
+        # Crear ventana de edición
+        edit_window = tk.Toplevel(self.root)
+        edit_window.title(f"Editar Trabajador: {valores[0]}")
+        edit_window.geometry("400x350")
+        edit_window.resizable(False, False)
+        
+        # Hacer la ventana modal
+        edit_window.transient(self.root)
+        edit_window.grab_set()
+        
+        # Variables para los campos
+        nombre_var = tk.StringVar(value=valores[0])
+        preferencia_var = tk.StringVar(value=valores[1])
+        horas_var = tk.StringVar(value=valores[2])
+        
+        # Nombre del trabajador
+        ttk.Label(edit_window, text="Nombre:").grid(column=0, row=0, padx=10, pady=10, sticky="w")
+        ttk.Entry(edit_window, textvariable=nombre_var, width=30).grid(column=1, row=0, padx=10, pady=10)
+        
+        # Preferencia de horario
+        ttk.Label(edit_window, text="Preferencia de horario:").grid(column=0, row=1, padx=10, pady=10, sticky="w")
+        preferencias = ttk.Combobox(edit_window, textvariable=preferencia_var, width=30)
+        preferencias['values'] = ["Jornada Completa", "Medio Tiempo", "Turno Mañana", "Turno Tarde", "Turno Noche", "Flexible"]
+        preferencias.grid(column=1, row=1, padx=10, pady=10)
+        
+        # Horas semanales
+        ttk.Label(edit_window, text="Horas semanales:").grid(column=0, row=2, padx=10, pady=10, sticky="w")
+        ttk.Entry(edit_window, textvariable=horas_var, width=30).grid(column=1, row=2, padx=10, pady=10)
+        
+        # Días de descanso
+        ttk.Label(edit_window, text="Días de descanso:").grid(column=0, row=3, padx=10, pady=10, sticky="w")
+        
+        # Frame para los checkboxes
+        dias_frame = ttk.Frame(edit_window)
+        dias_frame.grid(column=1, row=3, padx=10, pady=10)
+        
+        # Obtener días de descanso actuales
+        dias_actuales = valores[3].split(", ") if valores[3] else []
+        
+        # Checkboxes para los días
+        dias_vars = {}
+        dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+        
+        for i, dia in enumerate(dias):
+            var = tk.BooleanVar(value=dia in dias_actuales)
+            dias_vars[dia] = var
+            chk = ttk.Checkbutton(dias_frame, text=dia, variable=var)
+            chk.grid(row=i//4, column=i%4, padx=5, sticky="w")
+        
+        # Función para guardar cambios
+        def guardar_cambios():
+            # Validar nombre
+            nuevo_nombre = nombre_var.get().strip()
+            if not nuevo_nombre:
+                messagebox.showerror("Error", "El nombre no puede estar vacío", parent=edit_window)
+                return
+            
+            # Si el nombre cambió, verificar que no exista ya
+            if nuevo_nombre != valores[0]:
+                for i in self.tree_trabajadores.get_children():
+                    if i != item and self.tree_trabajadores.item(i, 'values')[0] == nuevo_nombre:
+                        messagebox.showerror("Error", f"Ya existe un trabajador con el nombre '{nuevo_nombre}'", parent=edit_window)
+                        return
+            
+            # Validar horas semanales
+            try:
+                horas = int(horas_var.get())
+                if horas <= 0 or horas > 48:
+                    messagebox.showerror("Error", "Las horas semanales deben estar entre 1 y 48", parent=edit_window)
+                    return
+            except ValueError:
+                messagebox.showerror("Error", "Las horas semanales deben ser un número entero", parent=edit_window)
+                return
+            
+            # Obtener días de descanso seleccionados
+            nuevos_dias = []
+            for dia, var in dias_vars.items():
+                if var.get():
+                    nuevos_dias.append(dia)
+            
+            if not nuevos_dias:
+                messagebox.showerror("Error", "Debe seleccionar al menos un día de descanso", parent=edit_window)
+                return
+            
+            # Actualizar listas
+            if nuevo_nombre != valores[0]:
+                # Actualizar nombre en la lista
+                idx = self.trabajadores.index(valores[0])
+                self.trabajadores[idx] = nuevo_nombre
+                
+                # Actualizar diccionarios
+                self.dias_descanso[nuevo_nombre] = self.dias_descanso.pop(valores[0], [])
+                self.horas_semanales[nuevo_nombre] = self.horas_semanales.pop(valores[0], 40)
+            
+            # Actualizar datos
+            self.dias_descanso[nuevo_nombre] = nuevos_dias
+            self.horas_semanales[nuevo_nombre] = horas
+            
+            # Actualizar Treeview
+            self.tree_trabajadores.item(item, values=(
+                nuevo_nombre, 
+                preferencia_var.get(), 
+                horas,
+                ", ".join(nuevos_dias)
+            ))
+            
+            # Cerrar ventana
+            edit_window.destroy()
+        
+        # Botones
+        btn_frame = ttk.Frame(edit_window)
+        btn_frame.grid(column=0, row=4, columnspan=2, padx=10, pady=20)
+        
+        ttk.Button(btn_frame, text="Guardar", command=guardar_cambios).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="Cancelar", command=edit_window.destroy).pack(side=tk.LEFT, padx=10)
+    
+    def eliminar_trabajador(self):
+        # Verificar si hay un trabajador seleccionado
+        if not self.tree_trabajadores.selection():
+            messagebox.showerror("Error", "No hay trabajador seleccionado")
+            return
+        
+        # Obtener el item seleccionado
+        item = self.tree_trabajadores.selection()[0]
+        
+        # Obtener el nombre del trabajador
+        nombre = self.tree_trabajadores.item(item, 'values')[0]
+        
+        # Confirmar eliminación
+        if not messagebox.askyesno("Confirmar", f"¿Está seguro de eliminar a {nombre}?"):
+            return
+        
+        # Eliminar de las listas y diccionarios
+        if nombre in self.trabajadores:
+            self.trabajadores.remove(nombre)
+        
+        if nombre in self.dias_descanso:
+            del self.dias_descanso[nombre]
+            
+        if nombre in self.horas_semanales:
+            del self.horas_semanales[nombre]
+        
+        # Eliminar del Treeview
+        self.tree_trabajadores.delete(item)
+    
+    def obtener_rango_fechas(self):
+        """Obtiene el rango de fechas seleccionado en el combobox de semanas"""
+        try:
+            if not self.semana_var.get():
+                return None, None
+                
+            anio = int(self.anio_var.get())
+            mes_idx = self.mes_combo.current() + 1
+            
+            # Extraer el rango de días de la semana seleccionada
+            rango = self.semana_var.get().split(" - ")
+            dia_inicio = int(rango[0])
+            dia_fin = int(rango[1])
+            
+            fecha_inicio = datetime.date(anio, mes_idx, dia_inicio)
+            fecha_fin = datetime.date(anio, mes_idx, dia_fin)
+            
+            return fecha_inicio, fecha_fin
+        except Exception as e:
+            print(f"Error al obtener rango de fechas: {e}")
+            return None, None
+    
+    def generar_horario(self):
+        # Verificar si hay trabajadores
+        if not self.trabajadores:
+            messagebox.showerror("Error", "No hay trabajadores para asignar horarios")
+            return
+        
+        # Obtener el rango de fechas
+        fecha_inicio, fecha_fin = self.obtener_rango_fechas()
+        if not fecha_inicio or not fecha_fin:
+            messagebox.showerror("Error", "No se pudo determinar el rango de fechas")
+            return
+        
+        # Limpiar el Treeview
+        for item in self.tree_horario.get_children():
+            self.tree_horario.delete(item)
+        
+        # Configurar las columnas del Treeview
+        columnas = ['Trabajador']
+        fechas = []
+        fecha_actual = fecha_inicio
+        
+        while fecha_actual <= fecha_fin:
+            dia_semana = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"][fecha_actual.weekday()]
+            columnas.append(f"{fecha_actual.day} {dia_semana}")
+            fechas.append(fecha_actual)
+            fecha_actual += datetime.timedelta(days=1)
+        
+        self.tree_horario['columns'] = columnas
+        
+        # Configurar encabezados y ancho de columnas
+        self.tree_horario.heading('Trabajador', text='Trabajador')
+        self.tree_horario.column('Trabajador', width=150)
+        
+        for i, col in enumerate(columnas[1:], 1):
+            self.tree_horario.heading(col, text=col)
+            self.tree_horario.column(col, width=100)
+            
+            # Colorear días específicos
+            fecha = fechas[i-1]
+            
+            if fecha.weekday() == 5:  # Sábado
+                self.tree_horario.tag_configure(f'col{i}', background='lightblue')
+            elif fecha.weekday() == 6:  # Domingo
+                self.tree_horario.tag_configure(f'col{i}', background='lightcoral')
+            
+            # Días festivos oficiales
+            es_festivo = self.es_dia_festivo(fecha)
+            if es_festivo:
+                self.tree_horario.tag_configure(f'col{i}', background='lightgreen')
+        
+        # Agregar trabajadores al Treeview
+        for trabajador in self.trabajadores:
+            valores = [trabajador]
+            for fecha in fechas:
+                # Comprobar si es día de descanso para este trabajador
+                dia_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"][fecha.weekday()]
+                
+                if dia_semana in self.dias_descanso.get(trabajador, []):
+                    valores.append("DESCANSO")
+                else:
+                    valores.append("")
+            
+            self.tree_horario.insert('', 'end', values=valores)
+    
+    def es_dia_festivo(self, fecha):
+        """Verifica si una fecha es día festivo oficial en México"""
+        anio = fecha.year
+        mes = fecha.month
+        dia = fecha.day
+        
+        # Días festivos fijos
+        if (mes == 1 and dia == 1):  # Año Nuevo
+            return True
+        if (mes == 5 and dia == 1):  # Día del Trabajo
+            return True
+        if (mes == 9 and dia == 16):  # Independencia
+            return True
+        if (mes == 12 and dia == 25):  # Navidad
+            return True
+            
+        # Días festivos que caen en lunes
+        if mes == 2 and dia <= 7 and fecha.weekday() == 0:  # Primer lunes de febrero (Constitución)
+            return True
+        if mes == 3 and 15 <= dia <= 21 and fecha.weekday() == 0:  # Tercer lunes de marzo (Benito Juárez)
+            return True
+        if mes == 11 and 15 <= dia <= 21 and fecha.weekday() == 0:  # Tercer lunes de noviembre (Revolución)
+            return True
+            
+        # Cada 6 años (transmisión del poder ejecutivo)
+        if (anio % 6 == 0) and mes == 10 and dia == 1:
+            return True
+            
+        return False
+    
+    def limpiar_horario(self):
+        # Confirmar antes de limpiar
+        if not messagebox.askyesno("Confirmar", "¿Está seguro de limpiar todo el horario?"):
+            return
+            
+        # Limpiar el Treeview de horarios
+        for item in self.tree_horario.get_children():
+            self.tree_horario.delete(item)
+    
+    def editar_horario(self, event):
+        # Obtener el item seleccionado
+        if not self.tree_horario.selection():
+            return
+        
+        item = self.tree_horario.selection()[0]
+        columna = self.tree_horario.identify_column(event.x)
+        
+        # Si la columna es la de trabajador, no hacer nada
+        if columna == '#1':
+            return
+        
+        # Obtener el valor actual de la celda
+        valores = self.tree_horario.item(item, 'values')
+        trabajador = valores[0]
+        columna_idx = int(columna.replace('#', '')) - 1
+        
+        # Si es día de descanso, mostrar mensaje y no permitir editar
+        if columna_idx < len(valores) and valores[columna_idx] == "DESCANSO":
+            messagebox.showinfo("Día de Descanso", 
+                              f"Este día está asignado como descanso para {trabajador}.\n\n"
+                              "Para cambiarlo, modifique los días de descanso en la pestaña de Trabajadores.")
+            return
+        
+        # Crear ventana de edición
+        edit_window = tk.Toplevel(self.root)
+        edit_window.title(f"Editar Horario: {trabajador}")
+        edit_window.geometry("400x500")
+        
+        # Hacer la ventana modal
+        edit_window.transient(self.root)
+        edit_window.grab_set()
+        
+        # Obtener el día
+        dia = self.tree_horario.heading(columna)['text']
+        
+        # Parsear el horario actual si existe
+        hora_entrada = ""
+        hora_salida = ""
+        horas_extra = ""
+        
+        if columna_idx < len(valores) and valores[columna_idx]:
+            horario_actual = valores[columna_idx]
+            if horario_actual != "DESCANSO":
+                # Puede tener formato: "HH:MM-HH:MM" o "HH:MM-HH:MM +HH:MM=HH:MM"
+                partes = horario_actual.split(" ")
+                horas_base = partes[0].split("-")
+                if len(horas_base) == 2:
+                    hora_entrada = horas_base[0]
+                    hora_salida = horas_base[1]
+                
+                if len(partes) > 1 and partes[1].startswith("+"):
+                    horas_extra = partes[1][1:].split("=")[0]
+        
+        # Variables para los campos
+        entrada_var = tk.StringVar(value=hora_entrada)
+        salida_var = tk.StringVar(value=hora_salida)
+        extra_var = tk.StringVar(value=horas_extra)
+        
+        # Etiqueta para mostrar el trabajador y el día
+        ttk.Label(edit_window, text=f"Horario para {trabajador} el día {dia}", font=("Arial", 12, "bold")).pack(padx=10, pady=10)
+        
+        # Frame para los campos de entrada
+        campos_frame = ttk.Frame(edit_window)
+        campos_frame.pack(padx=10, pady=10, fill=tk.X)
+        
+        # Hora de entrada
+        ttk.Label(campos_frame, text="Hora de entrada (HH:MM):").grid(column=0, row=0, padx=10, pady=5, sticky="w")
+        ttk.Entry(campos_frame, textvariable=entrada_var, width=15).grid(column=1, row=0, padx=10, pady=5)
+        
+        # Hora de salida
+        ttk.Label(campos_frame, text="Hora de salida (HH:MM):").grid(column=0, row=1, padx=10, pady=5, sticky="w")
+        ttk.Entry(campos_frame, textvariable=salida_var, width=15).grid(column=1, row=1, padx=10, pady=5)
+        
+        # Horas extra
+        ttk.Label(campos_frame, text="Horas extra (HH:MM):").grid(column=0, row=2, padx=10, pady=5, sticky="w")
+        ttk.Entry(campos_frame, textvariable=extra_var, width=15).grid(column=1, row=2, padx=10, pady=5)
+        
+        # Separador
+        ttk.Separator(edit_window, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10, pady=10)
+        
+        # Etiqueta para turnos rápidos
+        ttk.Label(edit_window, text="Turnos rápidos:", font=("Arial", 11, "bold")).pack(padx=10, pady=5, anchor="w")
+        
+        # Frame para los botones de turnos rápidos
+        turnos_frame = ttk.Frame(edit_window)
+        turnos_frame.pack(padx=10, pady=5, fill=tk.X)
+        
+        # Función para calcular duración
+        def mostrar_duracion():
+            try:
+                if not entrada_var.get() or not salida_var.get():
+                    return
+                    
+                h_entrada, m_entrada = map(int, entrada_var.get().split(':'))
+                h_salida, m_salida = map(int, salida_var.get().split(':'))
+                
+                # Convertir a minutos
+                minutos_entrada = h_entrada * 60 + m_entrada
+                minutos_salida = h_salida * 60 + m_salida
+                
+                # Si la salida es antes que la entrada, es al día siguiente
+                if minutos_salida < minutos_entrada:
+                    minutos_salida += 24 * 60
+                
+                # Calcular duración
+                duracion_minutos = minutos_salida - minutos_entrada
+                duracion_horas = duracion_minutos // 60
+                duracion_minutos_restantes = duracion_minutos % 60
+                
+                duracion_label.config(text=f"Duración: {duracion_horas}h {duracion_minutos_restantes}m")
+                
+                # Calcular nueva hora de salida con extras si hay
+                if extra_var.get():
+                    h_extra, m_extra = map(int, extra_var.get().split(':'))
+                    minutos_extra = h_extra * 60 + m_extra
+                    
+                    nueva_salida_minutos = minutos_salida + minutos_extra
+                    nueva_h = (nueva_salida_minutos // 60) % 24
+                    nueva_m = nueva_salida_minutos % 60
+                    
+                    duracion_label.config(text=f"Duración: {duracion_horas}h {duracion_minutos_restantes}m + "
+                                         f"{h_extra}h {m_extra}m = "
+                                         f"{(duracion_minutos + minutos_extra) // 60}h {(duracion_minutos + minutos_extra) % 60}m")
+            except:
+                duracion_label.config(text="Duración: --")
+        
+        # Variables para los botones de turnos
+        turnos = [
+            ("Jornada Completa", "09:00", "18:00"),
+            ("Mañana", "08:00", "16:00"),
+            ("Tarde", "16:00", "00:00"),
+            ("Noche", "00:00", "08:00"),
+            ("Media Jornada (M)", "08:00", "12:00"),
+            ("Media Jornada (T)", "14:00", "18:00"),
+            ("1 Hora", "09:00", "10:00"),
+            ("4 Horas", "09:00", "13:00"),
+            ("6 Horas", "09:00", "15:00")
+        ]
+        
+        # Crear los botones de turnos
+        turno_btns = []
+        row, col = 0, 0
+        for nombre, inicio, fin in turnos:
+            btn = ttk.Button(
+                turnos_frame, 
+                text=nombre, 
+                command=lambda i=inicio, f=fin: [entrada_var.set(i), salida_var.set(f), mostrar_duracion()]
+            )
+            btn.grid(row=row, column=col, padx=5, pady=5, sticky="w")
+            turno_btns.append(btn)
+            
+            col += 1
+            if col > 2:  # 3 botones por fila
+                col = 0
+                row += 1
+        
+        # Etiqueta para mostrar duración
+        duracion_label = ttk.Label(edit_window, text="Duración: --")
+        duracion_label.pack(padx=10, pady=10)
+        
+        # Vincular eventos para actualizar duración
+        entrada_var.trace_add("write", lambda *args: mostrar_duracion())
+        salida_var.trace_add("write", lambda *args: mostrar_duracion())
+        extra_var.trace_add("write", lambda *args: mostrar_duracion())
+        
+        # Botón para limpiar horario
+        ttk.Button(edit_window, text="Limpiar Horario", 
+                  command=lambda: [entrada_var.set(""), salida_var.set(""), extra_var.set("")]).pack(padx=10, pady=10)
+        
+        # Botones de guardar y cancelar
+        btn_frame = ttk.Frame(edit_window)
+        btn_frame.pack(padx=10, pady=10, fill=tk.X)
+        
+        ttk.Button(btn_frame, text="Guardar", 
+                  command=lambda: self.guardar_horario(item, columna, entrada_var.get(), salida_var.get(), extra_var.get(), edit_window)).pack(side=tk.LEFT, padx=10)
+        
+        ttk.Button(btn_frame, text="Cancelar", 
+                  command=edit_window.destroy).pack(side=tk.LEFT, padx=10)
+    
+    def guardar_horario(self, item, columna, entrada, salida, extra, dialogo):
+        # Si los campos están vacíos, limpiar el horario
+        if not entrada and not salida:
+            valores = list(self.tree_horario.item(item, 'values'))
+            columna_idx = int(columna.replace('#', '')) - 1
+            if columna_idx < len(valores):
+                valores[columna_idx] = ""
+                self.tree_horario.item(item, values=valores)
+            dialogo.destroy()
+            return
+        
+        # Validar formato de hora
+        if not self.validar_formato_hora(entrada) or not self.validar_formato_hora(salida):
+            messagebox.showerror("Error", "Formato de hora incorrecto. Use HH:MM", parent=dialogo)
+            return
+        
+        # Si hay horas extra, validar formato
+        if extra and not self.validar_formato_hora(extra):
+            messagebox.showerror("Error", "Formato de hora extra incorrecto. Use HH:MM", parent=dialogo)
+            return
+        
+        # Crear texto para mostrar en el Treeview
+        texto = f"{entrada}-{salida}"
+        if extra:
+            # Calcular nueva hora de salida con horas extra
+            h_salida, m_salida = map(int, salida.split(':'))
+            h_extra, m_extra = map(int, extra.split(':'))
+            
+            # Convertir a minutos totales
+            minutos_salida = h_salida * 60 + m_salida
+            minutos_extra = h_extra * 60 + m_extra
+            
+            # Sumar para obtener la nueva salida
+            nueva_salida_minutos = minutos_salida + minutos_extra
+            
+            # Convertir de vuelta a horas y minutos
+            nueva_h = (nueva_salida_minutos // 60) % 24
+            nueva_m = nueva_salida_minutos % 60
+            
+            nueva_salida = f"{nueva_h:02d}:{nueva_m:02d}"
+            texto += f" +{extra}={nueva_salida}"
+        
+        # Actualizar el Treeview
+        valores = list(self.tree_horario.item(item, 'values'))
+        columna_idx = int(columna.replace('#', '')) - 1
+        
+        # Asegurarse de que hay suficientes elementos en la lista
+        while len(valores) <= columna_idx:
+            valores.append("")
+            
+        valores[columna_idx] = texto
+        self.tree_horario.item(item, values=valores)
+        
+        # Cerrar el diálogo
+        dialogo.destroy()
+    
+    def validar_formato_hora(self, hora):
+        try:
+            h, m = map(int, hora.split(':'))
+            return 0 <= h < 24 and 0 <= m < 60
+        except:
+            return False
+    
+    def asignar_horarios_automaticos(self):
+        # Verificar si hay trabajadores
+        if not self.trabajadores:
+            messagebox.showerror("Error", "No hay trabajadores para asignar horarios")
+            return
+        
+        # Verificar si se ha generado el horario
+        if not self.tree_horario.get_children():
+            messagebox.showerror("Error", "Primero debe generar el horario")
+            return
+        
+        # Preguntar al usuario si está seguro
+        if not messagebox.askyesno("Confirmar", 
+                               "Se asignarán horarios automáticamente considerando los días de descanso de cada trabajador.\n\n"
+                               "¿Desea continuar?"):
+            return
+        
+        # Verificar si hay suficientes trabajadores (al menos 3 para cubrir los 3 turnos principales)
+        trabajadores_disponibles = len(self.trabajadores)
+        if trabajadores_disponibles < 3:
+            if not messagebox.askyesno("Advertencia", 
+                                    "Se recomienda tener al menos 3 trabajadores para cubrir las 24 horas.\n\n"
+                                    "¿Desea continuar con los trabajadores disponibles?"):
+                return
+        
+        # Definir los turnos principales
+        turnos = [
+            ("08:00", "16:00"),  # Mañana
+            ("16:00", "00:00"),  # Tarde
+            ("00:00", "08:00")   # Noche
+        ]
+        
+        # Obtener el rango de fechas
+        fecha_inicio, fecha_fin = self.obtener_rango_fechas()
+        if not fecha_inicio or not fecha_fin:
+            messagebox.showerror("Error", "No se pudo determinar el rango de fechas")
+            return
+        
+        # Lista de fechas en el rango
+        fechas = []
+        fecha_actual = fecha_inicio
+        while fecha_actual <= fecha_fin:
+            fechas.append(fecha_actual)
+            fecha_actual += datetime.timedelta(days=1)
+        
+        # Obtener trabajadores disponibles para cada día
+        trabajadores_por_dia = {}
+        for fecha in fechas:
+            dia_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"][fecha.weekday()]
+            disponibles = [t for t in self.trabajadores if dia_semana not in self.dias_descanso.get(t, [])]
+            trabajadores_por_dia[fecha] = disponibles
+        
+        # Asignar turnos a los trabajadores
+        items = self.tree_horario.get_children()
+        
+        for fecha_idx, fecha in enumerate(fechas):
+            # Determinar si es fin de semana
+            es_fin_semana = fecha.weekday() >= 5
+            
+            # Trabajadores disponibles para este día
+            disponibles = trabajadores_por_dia[fecha]
+            if not disponibles:
+                continue
+                
+            # Calcular la semana del mes (para rotación)
+            semana = (fecha.day - 1) // 7
+            
+            # Determinar cuántos turnos asignar (menos en fin de semana normalmente)
+            num_turnos = min(len(disponibles), 3)  # Máximo 3 turnos (mañana, tarde, noche)
+            
+            # Asignar trabajadores a los turnos
+            for turno_idx in range(num_turnos):
+                # Obtener el turno
+                entrada, salida = turnos[turno_idx]
+                
+                # Calcular qué trabajador toma este turno (rotando cada semana)
+                trabajador_idx = (turno_idx + semana) % len(disponibles)
+                trabajador = disponibles[trabajador_idx]
+                
+                # Buscar el item correspondiente a este trabajador
+                for item in items:
+                    if self.tree_horario.item(item, 'values')[0] == trabajador:
+                        # Actualizar el horario
+                        valores = list(self.tree_horario.item(item, 'values'))
+                        columna_idx = fecha_idx + 1  # +1 porque la primera columna es el nombre
+                        
+                        if columna_idx < len(valores) and valores[columna_idx] != "DESCANSO":
+                            valores[columna_idx] = f"{entrada}-{salida}"
+                            self.tree_horario.item(item, values=valores)
+        
+        messagebox.showinfo("Éxito", "Horarios asignados automáticamente")
+    
+    def calcular_resumen(self):
+        # Verificar si hay horarios generados
+        if not self.tree_horario.get_children():
+            messagebox.showerror("Error", "No hay horarios para calcular resumen")
+            return
+        
+        # Limpiar el Treeview de resumen
+        for item in self.tree_resumen.get_children():
+            self.tree_resumen.delete(item)
+        
+        # Calcular resumen para cada trabajador
+        for item in self.tree_horario.get_children():
+            valores = self.tree_horario.item(item, 'values')
+            trabajador = valores[0]
+            
+            horas_regulares = 0
+            horas_extra = 0
+            dias_laborados = 0
+            
+            # Recorrer los días
+            for i in range(1, len(valores)):
+                if i < len(valores) and valores[i] and valores[i] != "DESCANSO":
+                    dias_laborados += 1
+                    
+                    # Parsear el horario
+                    horario = valores[i]
+                    
+                    try:
+                        # Puede tener formato: "HH:MM-HH:MM" o "HH:MM-HH:MM +HH:MM=HH:MM"
+                        partes = horario.split(" ")
+                        horas_base = partes[0].split("-")
+                        
+                        if len(horas_base) == 2:
+                            h_entrada, m_entrada = map(int, horas_base[0].split(':'))
+                            h_salida, m_salida = map(int, horas_base[1].split(':'))
+                            
+                            # Convertir a minutos
+                            minutos_entrada = h_entrada * 60 + m_entrada
+                            minutos_salida = h_salida * 60 + m_salida
+                            
+                            # Si la salida es antes que la entrada, es al día siguiente
+                            if minutos_salida < minutos_entrada:
+                                minutos_salida += 24 * 60
+                            
+                            # Calcular horas regulares
+                            horas_regulares += (minutos_salida - minutos_entrada) / 60
+                            
+                            # Calcular horas extra
+                            if len(partes) > 1 and partes[1].startswith("+"):
+                                extra = partes[1][1:].split("=")[0]
+                                h_extra, m_extra = map(int, extra.split(':'))
+                                horas_extra += h_extra + m_extra / 60
+                    except:
+                        pass
+            
+            # Agregar al resumen
+            self.tree_resumen.insert('', 'end', values=(
+                trabajador,
+                f"{horas_regulares:.2f}",
+                f"{horas_extra:.2f}",
+                f"{(horas_regulares + horas_extra):.2f}",
+                dias_laborados
+            ))
+    
+    def exportar_pdf(self):
+        # Pedir al usuario dónde guardar el archivo
+        file_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
+        if not file_path:
+            return
+        
+        # Obtener el rango de fechas
+        fecha_inicio, fecha_fin = self.obtener_rango_fechas()
+        
+        # Crear el documento PDF en formato apaisado (landscape)
+        doc = SimpleDocTemplate(file_path, pagesize=landscape(letter))
+        elements = []
+        
+        # Estilo para títulos
+        styles = getSampleStyleSheet()
+        
+        # Título del documento
+        title_text = "Horario Laboral"
+        if fecha_inicio and fecha_fin:
+            title_text += f" - {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')}"
+        elements.append(Paragraph(title_text, styles['Title']))
+        
+        # Espacio
+        elements.append(Paragraph("<br/>", styles['Normal']))
+        
+        # Obtener los datos del Treeview
+        data = []
+        columnas = self.tree_horario['columns']
+        
+        # Encabezados
+        headers = [self.tree_horario.heading(col)['text'] for col in columnas]
+        data.append(headers)
+        
+        # Datos de cada trabajador
+        for item in self.tree_horario.get_children():
+            valores = self.tree_horario.item(item, 'values')
+            fila = []
+            for i in range(len(columnas)):
+                if i < len(valores):
+                    fila.append(valores[i])
+                else:
+                    fila.append("")
+            data.append(fila)
+        
+        # Crear la tabla con escala reducida para que quepa mejor
+        table = Table(data, repeatRows=1)
+        
+        # Estilo de la tabla
+        style = TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ])
+        
+        # Colorear fines de semana
+        for i, col in enumerate(columnas[1:], 1):
+            if "Sáb" in col:
+                style.add('BACKGROUND', (i, 1), (i, -1), colors.lightblue)
+            elif "Dom" in col:
+                style.add('BACKGROUND', (i, 1), (i, -1), colors.lightcoral)
+                
+        table.setStyle(style)
+        elements.append(table)
+        
+        # Agregar resumen de horas si hay datos
+        if self.tree_resumen.get_children():
+            # Espacio
+            elements.append(Paragraph("<br/><br/>", styles['Normal']))
+            
+            # Título de la sección de resumen
+            elements.append(Paragraph("Resumen de Horas Trabajadas", styles['Heading1']))
+            
+            # Obtener los datos del resumen
+            resumen_data = []
+            columnas_resumen = self.tree_resumen['columns']
+            
+            # Encabezados
+            resumen_data.append([self.tree_resumen.heading(col)['text'] for col in columnas_resumen])
+            
+            # Datos
+            for item in self.tree_resumen.get_children():
+                valores = self.tree_resumen.item(item, 'values')
+                resumen_data.append([valores[i] if i < len(valores) else "" for i in range(len(columnas_resumen))])
+            
+            # Crear la tabla
+            resumen_table = Table(resumen_data, repeatRows=1)
+            
+            # Estilo de la tabla
+            resumen_style = TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ])
+            
+            resumen_table.setStyle(resumen_style)
+            elements.append(resumen_table)
+        
+        # Construir el PDF
+        doc.build(elements)
+        messagebox.showinfo("Éxito", f"Horario exportado a {file_path}")
+    
+    def exportar_excel(self):
+        # Verificar si hay algo que exportar
+        if not self.tree_horario.get_children():
+            messagebox.showerror("Error", "No hay horarios para exportar")
+            return
+            
+        # Pedir al usuario dónde guardar el archivo
+        file_path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")])
+        if not file_path:
+            return
+        
+        # Obtener los datos del horario
+        data_horario = []
+        columnas = self.tree_horario['columns']
+        headers = [self.tree_horario.heading(col)['text'] for col in columnas]
+        
+        for item in self.tree_horario.get_children():
+            valores = self.tree_horario.item(item, 'values')
+            fila = []
+            for i in range(len(columnas)):
+                if i < len(valores):
+                    fila.append(valores[i])
+                else:
+                    fila.append("")
+            data_horario.append(fila)
+        
+        # Crear el DataFrame para el horario
+        df_horario = pd.DataFrame(data_horario, columns=headers)
+        
+        # Obtener los datos del resumen si existen
+        data_resumen = []
+        if self.tree_resumen.get_children():
+            columnas_resumen = self.tree_resumen['columns']
+            headers_resumen = [self.tree_resumen.heading(col)['text'] for col in columnas_resumen]
+            
+            for item in self.tree_resumen.get_children():
+                valores = self.tree_resumen.item(item, 'values')
+                data_resumen.append([valores[i] if i < len(valores) else "" for i in range(len(columnas_resumen))])
+            
+        # Crear el DataFrame para el resumen
+        df_resumen = pd.DataFrame(data_resumen, columns=headers_resumen) if data_resumen else None
+        
+        # Crear un writer de Excel
+        with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+            # Exportar el horario a una hoja
+            df_horario.to_excel(writer, sheet_name='Horario', index=False)
+            
+            # Si hay resumen, exportarlo a otra hoja
+            if df_resumen is not None:
+                df_resumen.to_excel(writer, sheet_name='Resumen', index=False)
+                
+        messagebox.showinfo("Éxito", f"Horario exportado a {file_path}")
+    
+    def guardar_configuracion(self):
+        # Pedir al usuario dónde guardar el archivo
+        file_path = filedialog.asksaveasfilename(defaultextension=".pkl", filetypes=[("Pickle files", "*.pkl")])
+        if not file_path:
+            return
+        
+        # Crear un diccionario con la configuración
+        config = {
+            'trabajadores': self.trabajadores,
+            'dias_descanso': self.dias_descanso,
+            'horas_semanales': self.horas_semanales,
+            'horarios': {}
+        }
+        
+        # Obtener los horarios del Treeview
+        for item in self.tree_horario.get_children():
+            valores = self.tree_horario.item(item, 'values')
+            config['horarios'][valores[0]] = valores[1:]
+        
+        # Guardar la configuración
+        with open(file_path, 'wb') as file:
+            pickle.dump(config, file)
+        
+        messagebox.showinfo("Éxito", f"Configuración guardada en {file_path}")
+    
+    def cargar_configuracion(self):
+        # Pedir al usuario qué archivo cargar
+        file_path = filedialog.askopenfilename(filetypes=[("Pickle files", "*.pkl")])
+        if not file_path:
+            return
+        
+        # Cargar la configuración
+        try:
+            with open(file_path, 'rb') as file:
+                config = pickle.load(file)
+            
+            # Actualizar las listas y diccionarios
+            self.trabajadores = config.get('trabajadores', [])
+            self.dias_descanso = config.get('dias_descanso', {})
+            self.horas_semanales = config.get('horas_semanales', {})
+            
+            # Limpiar el Treeview de trabajadores
+            for item in self.tree_trabajadores.get_children():
+                self.tree_trabajadores.delete(item)
+            
+            # Agregar los trabajadores al Treeview
+            for trabajador in self.trabajadores:
+                dias = ", ".join(self.dias_descanso.get(trabajador, ["Domingo"]))
+                horas = self.horas_semanales.get(trabajador, 40)
+                preferencia = "Jornada Completa"  # Valor por defecto
+                
+                self.tree_trabajadores.insert('', 'end', values=(trabajador, preferencia, horas, dias))
+            
+            # Generar el horario si hay información
+            if config.get('horarios'):
+                self.generar_horario()
+                
+                # Actualizar los horarios en el Treeview
+                items = self.tree_horario.get_children()
+                for item in items:
+                    valores = self.tree_horario.item(item, 'values')
+                    trabajador = valores[0]
+                    if trabajador in config['horarios']:
+                        nuevos_valores = [trabajador] + list(config['horarios'][trabajador])
+                        self.tree_horario.item(item, values=nuevos_valores)
+            
+            messagebox.showinfo("Éxito", f"Configuración cargada desde {file_path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al cargar la configuración: {str(e)}")
+
+def main():
+    root = tk.Tk()
+    app = HorarioLaboral(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
