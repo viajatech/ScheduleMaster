@@ -1,3 +1,11 @@
+#Créditos; David Ruiz (a.k.a @viajatech) si usas mi script favor de darle like a este repositorio en; https://github.com/viajatech/ScheduleMaster
+
+#pip install pandas
+#pip install reportlab
+#pip install openpyxl
+#pip install pillow
+
+
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import pandas as pd
