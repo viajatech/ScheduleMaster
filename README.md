@@ -1,28 +1,31 @@
-# ⏰🛠️ **Scheduler Pro MX**  
-_Planning inteligente de turnos 24/7 con exportación _one‑click_ a PDF & Excel_
+# ⏰ Schedule Master MX  
+_Genera, visualiza y exporta turnos 24 / 7 en segundos – sin hojas de cálculo infernales_
 
-![Build](https://img.shields.io/badge/build-passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![Made for-México‑NOM‑30-red)
+![Build](https://img.shields.io/badge/build-passing-brightgreen)
+![Python](https://img.shields.io/badge/python-3.8%2B-blue)
+![License](https://img.shields.io/badge/license-Apache%202.0-orange)
+![Made for](https://img.shields.io/badge/made%20for-NOM--030--STPS‑MX-red)
 
-> _“Organizar turnos nunca había sido tan fácil… ni tan **bonito**.”_
+> _“Un clic para un PDF bonito, otro para tu Excel. El resto del día es tuyo.”_
 
 ---
 
-## ✨ Novedades 2025.04
-### Características Turbo‑Mejoradas
-| ⚡️ | **Qué cambia** | **Por qué te importa** |
+## ✨ Highlights
+| 🚀 | **Función** | **Por qué importa** |
 |---|---|---|
-| **Dependencias fresh** | `openpyxl` & `pillow` integradas | Exporta a Excel sin sudar y genera PDFs nítidos |
-| **UI 3‑Tabs** | `👥 Trabajadores` · `🗓️ Horarios` · `📊 Resumen` | Navegación de dos clics, cero confusión |
-| **Selector 2030‑2050** | Año actual → 2050 + semanas exactas | Planifica lanzamientos a largo plazo |
-| **Jornadas Ninja** | Preajustes 1h · 4h · 6h · 8h | Mezcla jornadas flexibles con un tap |
-| **Days‑Off a la carta** | Multi‑descanso por empleado | Cumple normativa mexicana sin excels monstruosos |
-| **Horas Extra Visibles** | Marca, calcula y resume en vivo | Adiós cálculos en post‑its |
-| **Export PRO** | • PDF _landscape_ <br>• Excel multi‑sheet | Reportes que tu jefe querrá imprimir en póster |
+| **GUI Tkinter 3‑Tabs** | Trabajadores · Horarios · Resumen | Usabilidad inmediata, cero curva de aprendizaje |
+| **Selector Año → 2050 + Semanas Reales** | Planea eventos futuros o temporadas enteras | Flex is the new black |
+| **Turnos pre‑definidos & flexibles** | 1 h, 4 h, 6 h, 8 h + media jornada | Ahorra tiempo asignando con un tap |
+| **Autoplanificación 24/7** | Rota mañana‑tarde‑noche respetando descansos | Cobertura total con la Ley Federal del Trabajo mexicana |
+| **Export PRO** | • PDF _landscape_ <br>• Excel con hojas múltiple (Horario + Resumen) | Reportes que enamoran a gerencia y auditorías |
+| **Resumen Dinámico** | Horas regulares, extras y días laborados | Detecta sobretiempos antes de que lo haga RH |
+| **Guardar/Cargar Config** | Pickle 1‑file | Sigue donde lo dejaste aun después de vacaciones |
 
 ---
 
-## 🚀 Instalación Rápida
+## 🖥️ Demo Rápida
 ```bash
+git clone https://github.com/viajatech/ScheduleMaster.git
+cd ScheduleMaster
 pip install -r requirements.txt
-python app.py  # ¡Listo, abre tu navegador!
-
+python schedule_master.py   # abre tu navegador, café en mano
